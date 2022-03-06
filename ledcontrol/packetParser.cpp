@@ -16,6 +16,7 @@
 #define PACKET_QUAT_LEN                 (19)
 #define PACKET_BUTTON_LEN               (5)
 #define PACKET_BRIGHTNESS_LEN               (4)
+#define PACKET_DBA_LEN               (4)
 #define PACKET_COLOR_LEN                (6)
 #define PACKET_LOCATION_LEN             (15)
 
@@ -99,6 +100,8 @@ uint8_t readPacket(Adafruit_BLE *ble, uint16_t timeout)
     if ((packetbuffer[1] == 'L') && (replyidx == PACKET_LOCATION_LEN))
       break;
     if ((packetbuffer[1] == 'S') && (replyidx == PACKET_BRIGHTNESS_LEN))
+      break;
+    if ((packetbuffer[1] == 'D') && (replyidx == PACKET_DBA_LEN))
       break;
 
     while (ble->available()) {

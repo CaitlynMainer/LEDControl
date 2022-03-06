@@ -1,38 +1,25 @@
 /* NOTE: This sketch required at least version 1.1.0 of Adafruit_Neopixel !!! */
 
 #include <string.h>
-
 #include <Arduino.h>
-
 #include <SPI.h>
-
 #include "Adafruit_BLE.h"
-
 #include "Adafruit_BluefruitLE_SPI.h"
-
 #include "Adafruit_BluefruitLE_UART.h"
+
+#include "BluefruitConfig.h"
 
 #if SOFTWARE_SERIAL_AVAILABLE
   #include <SoftwareSerial.h>
 #endif
 
-#include "BluefruitConfig.h"
+#define FACTORYRESET_ENABLE         1
+#define MINIMUM_FIRMWARE_VERSION    "0.6.6"
+#define MODE_LED_BEHAVIOUR          "MODE"
 
-#define NEOPIXEL_VERSION_STRING "Neopixel v2.0"
-#define PIN 6 /* Pin used to drive the NeoPixels */
-
-#define MAXCOMPONENTS 4
-uint8_t * pixelBuffer = NULL;
-uint8_t width = 0;
-uint8_t height = 0;
-uint8_t stride;
-uint8_t componentsValue;
-bool is400Hz;
-uint8_t components = 3; // only 3 and 4 are valid values
 #define NUM_LEDS 12
 #define DATA_PIN 6
 uint8_t brightness = 255; /* Control the brightness of your leds */
-#define SATURATION 255 /* Control the saturation of your leds */
 
 #include <Adafruit_NeoPixel.h>
 
@@ -41,35 +28,21 @@ Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, DATA_PIN, NEO_GRB + NEO_KH
 Adafruit_BluefruitLE_SPI ble(BLUEFRUIT_SPI_CS, BLUEFRUIT_SPI_IRQ, BLUEFRUIT_SPI_RST);
 unsigned long patternInterval = 20; // time between steps in the pattern
 unsigned long lastUpdate = 0; // for millis() when last update occoured
-unsigned long intervals[] = {
-  20,
-  20,
-  50,
-  100
-}; // speed for each pattern
+unsigned long intervals[] = {20,20,50,100}; // speed for each pattern
 
 // Create the bluefruit object, either software serial...uncomment these lines
 
+
 // A small helper
-void error(const __FlashStringHelper * err) {
+void error(const __FlashStringHelper*err) {
   Serial.println(err);
   while (1);
 }
 
-void serial_printf(const char * format, ...) {
-  char buffer[48];
-  va_list args;
-  va_start(args, format);
-  vsnprintf(buffer, sizeof(buffer), format, args);
-  va_end(args);
-  Serial.print(buffer);
-}
-
 // function prototypes over in packetparser.cpp
-uint8_t readPacket(Adafruit_BLE * ble, uint16_t timeout);
-float parsefloat(uint8_t * buffer);
-void printHex(const uint8_t * data,
-  const uint32_t numBytes);
+uint8_t readPacket(Adafruit_BLE *ble, uint16_t timeout);
+float parsefloat(uint8_t *buffer);
+void printHex(const uint8_t * data, const uint32_t numBytes);
 
 // the packet buffer
 extern uint8_t packetbuffer[];
@@ -81,26 +54,41 @@ extern uint8_t packetbuffer[];
 */
 /**************************************************************************/
 void setup(void) {
+  while (!Serial);  // required for Flora & Micro
+  delay(500);
   Serial.begin(115200);
 
   // Config Neopixels
   //neopixel.begin();  FastLED.addLeds < NEOPIXEL, DATA_PIN > (leds, NUM_LEDS);
+
+  strip.begin(); // This initializes the NeoPixel library.
+  wipe(); // wipes the LED buffers
+  
   /* Initialise the module */
   Serial.print(F("Initialising the Bluefruit LE module: "));
 
   Serial.println(F("OK!"));
 
-  ble.println("AT+GAPDEVNAME=DeviceName");
+  if ( !ble.begin(VERBOSE_MODE) )
+  {
+    error(F("Couldn't find Bluefruit, make sure it's in CoMmanD mode & check wiring?"));
+  }
+  Serial.println( F("OK!") );
 
   /* Disable command echo from Bluefruit */
   ble.echo(false);
-  ble.info();
-  ble.verbose(true); // debug info is a little annoying after this point!
 
+  Serial.println("Requesting Bluefruit info:");
+  /* Print Bluefruit information */
+  ble.info();
+  ble.println("AT+GAPDEVNAME=DeviceName");
+  ble.verbose(false);  // debug info is a little annoying after this point!
+
+  
   /* Wait for connection */
-  while (!ble.isConnected()) {
-    delay(500);
-  }
+  //while (!ble.isConnected()) {
+  //  delay(500);
+  //}
 
   Serial.println(F("***********************"));
 
@@ -110,8 +98,7 @@ void setup(void) {
 
   Serial.println(F("***********************"));
 
-  strip.begin(); // This initializes the NeoPixel library.
-  wipe(); // wipes the LED buffers
+
 }
 
 uint8_t red = 0;
@@ -123,7 +110,14 @@ uint8_t blue = 0;
 */
 /**************************************************************************/
 void loop(void) {
-  static int pattern = 1;
+  static int pattern = 18;
+  
+  if (Serial.available())
+  {
+    pattern = Serial.parseInt(); //reads serial input
+    Serial.print(pattern);
+    return;
+  }
   if (millis() - lastUpdate > patternInterval) updatePattern(pattern);
   /* Wait for new data to arrive */
   uint8_t len = readPacket( & ble, BLE_READPACKET_TIMEOUT);
@@ -155,18 +149,8 @@ void loop(void) {
     Serial.print(buttnum);
     if (pressed) {
       Serial.println(" pressed");
-      if (buttnum == 1) {
-        pattern = 1; // change pattern number
-      } else if (buttnum == 2) {
-        pattern = 2;
-      } else if (buttnum == 3) {
-        pattern = 3;
-      } else if (buttnum == 4) {
-        pattern = 1;
-      } else if (buttnum == 5) {
-        pattern = 0;
-      }
-      patternInterval = intervals[pattern]; // set speed for this pattern
+      pattern = buttnum;
+      //patternInterval = intervals[pattern]; // set speed for this pattern
       wipe(); // clear out the buffer 
 
     } else {
@@ -179,6 +163,14 @@ void loop(void) {
     brightness = packetbuffer[2];
     Serial.print("Brightness ");
     Serial.print(brightness);
+    Serial.println("");
+  }
+
+    // dBA
+  if (packetbuffer[1] == 'D') {
+    uint8_t dba = packetbuffer[2];
+    Serial.print("dBA ");
+    Serial.print(dba);
     Serial.println("");
   }
 
@@ -275,13 +267,41 @@ void updatePattern(int pat) { // call the pattern currently being created
     theaterChaseRainbow();
     break;
   case 3:
+    rainbowFlicker();
+    break;
+  case 4:
     colorWipe(strip.Color(red, green, blue)); // red
+    break;
+  case 5:
+    colorFlicker(strip.Color(red, green, blue)); // red
+    break;
+  case 6:
+    solid(strip.Color(red, green, blue)); // red
+    break;
+  case 18:
+    wipe();
     break;
   }
 }
 
+void wipe() { // clear all LEDs
+  for (int i = 0; i < strip.numPixels(); i++) {
+    strip.setPixelColor(i, strip.Color(0, 0, 0));
+  }
+  strip.show();
+}
+
+void solid(uint32_t c) { // clear all LEDs
+  for (int i = 0; i < strip.numPixels(); i++) {
+    strip.setBrightness(brightness);
+    strip.setPixelColor(i, c);
+  }
+  strip.show();
+}
+
 void rainbow() { // modified from Adafruit example to make it a state machine
   static uint16_t j = 0;
+  patternInterval = 20;
   for (int i = 0; i < strip.numPixels(); i++) {
     strip.setBrightness(brightness);
     strip.setPixelColor(i, Wheel((i + j) & 255));
@@ -294,6 +314,7 @@ void rainbow() { // modified from Adafruit example to make it a state machine
 }
 void rainbowCycle() { // modified from Adafruit example to make it a state machine
   static uint16_t j = 0;
+  patternInterval = 20;
   for (int i = 0; i < strip.numPixels(); i++) {
     strip.setBrightness(brightness);
     strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
@@ -304,8 +325,22 @@ void rainbowCycle() { // modified from Adafruit example to make it a state machi
   lastUpdate = millis(); // time for next change to the display
 }
 
+void rainbowFlicker() { // modified from Adafruit example to make it a state machine
+  static uint16_t j = 0;
+  patternInterval = 100;
+  for (int i = 0; i < strip.numPixels(); i++) {
+    strip.setBrightness(brightness);
+    strip.setPixelColor(random(NUM_LEDS), Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+  }
+  strip.show();
+  j++;
+  if (j >= 256 * 5) j = 0;
+  lastUpdate = millis(); // time for next change to the display
+}
+
 void theaterChaseRainbow() { // modified from Adafruit example to make it a state machine
   static int j = 0, q = 0;
+  patternInterval = 100;
   static boolean on = true;
   if (on) {
     for (int i = 0; i < strip.numPixels(); i = i + 3) {
@@ -329,21 +364,47 @@ void theaterChaseRainbow() { // modified from Adafruit example to make it a stat
 }
 
 void colorWipe(uint32_t c) { // modified from Adafruit example to make it a state machine
-  static int i = 0;
-  strip.setPixelColor(i, c);
-  strip.show();
-  i++;
-  if (i >= strip.numPixels()) {
-    i = 0;
-    wipe(); // blank out strip
+  patternInterval = 100;
+  static uint16_t j = 0;
+  static uint16_t r = strip.numPixels();
+  static bool reverse = false;
+  //for(uint16_t i=0; i<strip.numPixels(); i++) {
+  strip.setBrightness(brightness);
+  if (!reverse) {
+    strip.setPixelColor(j, c);
+    strip.setPixelColor(j - 1, 0);
+    j++;
+  } else {
+    strip.setPixelColor(r, 0);
+    strip.setPixelColor(r - 1, c);
+    r--;
   }
-  lastUpdate = millis(); // time for next change to the display
+
+  strip.show();
+  //for(uint16_t i=strip.numPixels(); i>0; i--) {
+  //  strip.setPixelColor(j, c);
+  //  strip.setPixelColor(j + 1, 0);
+  //}
+  //strip.show();
+
+  if (j >= strip.numPixels()) { j = 0; r = strip.numPixels(); reverse = true;}
+  if (r == 1) { r = strip.numPixels(); reverse = false;}
+  
+  lastUpdate = millis(); // time for next change to the display 
 }
 
-void wipe() { // clear all LEDs
+void colorFlicker(uint32_t c) { // modified from Adafruit example to make it a state machine
+  static uint16_t j = 0;
+  patternInterval = 100;
   for (int i = 0; i < strip.numPixels(); i++) {
-    strip.setPixelColor(i, strip.Color(0, 0, 0));
+    strip.setBrightness(brightness);
+    strip.setPixelColor(random(NUM_LEDS), c);
+    strip.setPixelColor(random(NUM_LEDS), 0);
   }
+  strip.show();
+  j++;
+  if (j >= 256 * 5) j = 0;
+  lastUpdate = millis(); // time for next change to the display
 }
 
 uint32_t Wheel(byte WheelPos) {
